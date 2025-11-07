@@ -212,10 +212,13 @@ void Terminus::parseTerminusPDRs()
     if (terminusName.empty() &&
         (numericSensorPdrs.size() || compactNumericSensorPdrs.size()))
     {
-        lg2::error(
-            "Terminus ID {TID}: DOES NOT have name. Skip Adding sensors.",
-            "TID", tid);
-        return;
+        // lg2::error(
+        //     "Terminus ID {TID}: DOES NOT have name. Skip Adding sensors.",
+        //     "TID", tid);
+        // return;
+        lg2::error("Does not have name, hence using tid");
+        terminusName = "TID" + std::to_string(tid);
+
     }
 
     if (createInventoryPath(terminusName))
@@ -233,10 +236,13 @@ void Terminus::addNextSensorFromPDRs()
 
     if (terminusName.empty())
     {
-        lg2::error(
-            "Terminus ID {TID}: DOES NOT have name. Skip Adding sensors.",
-            "TID", tid);
-        return;
+        // lg2::error(
+        //     "Terminus ID {TID}: DOES NOT have name. Skip Adding sensors.",
+        //     "TID", tid);
+        // return;
+        lg2::error("Does not have name, hence using tid");
+        terminusName = "TID" + std::to_string(tid);
+
     }
 
     auto pdrIt = sensorPdrIt;
