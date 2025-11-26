@@ -1,6 +1,7 @@
 #include "terminus_manager.hpp"
 
 #include "manager.hpp"
+#include <libpldm/transport/af-mctp.h>
 
 #include <phosphor-logging/lg2.hpp>
 
@@ -227,6 +228,33 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
                 terminusInitFailed = true;
                 continue;
             }
+
+// AF MCTP INIT
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+            auto networkId = std::get<3>(mctpInfo);
+            auto eid = std::get<0>(mctpInfo);
+            auto* pldmTransport = handler.getTransport();
+            if (pldmTransport)
+            {
+                auto* afMctpTransport = pldmTransport->getAfMctpTransport();
+                if (afMctpTransport)
+                {
+                    int rc = pldm_transport_af_mctp_map_tid_network(
+                        afMctpTransport, tid.value(), eid, networkId);
+                    if (rc)
+                    {
+                        lg2::error(
+                            "Failed to map TID {TID} to EID {EID} on network {NETWORK}, error {RC}",
+                            "TID", tid.value(), "EID", eid, "NETWORK",
+                            networkId, "RC", rc);
+                        mctpInfoAvailTable.erase(mctpInfo);
+                        terminusInitFailed = true;
+                        continue;
+                    }
+                }
+            }
+#endif
+
             addedTids.push_back(tid.value());
         }
 

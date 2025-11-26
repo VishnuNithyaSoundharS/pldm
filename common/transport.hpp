@@ -26,6 +26,19 @@ class PldmTransport
     PldmTransport& operator=(const PldmTransport&& other) = delete;
     ~PldmTransport();
 
+    /** @brief Get the underlying af_mctp transport for network mapping
+     *
+     * @return pointer to af_mctp transport or nullptr
+     */
+    struct pldm_transport_af_mctp* getAfMctpTransport()
+    {
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+        return impl.af_mctp;
+#else
+        return nullptr;
+#endif
+    }
+
     /** @brief Provides a file descriptor that can be polled for readiness.
      *
      * Readiness generally indicates that a call to recvMsg() will immediately

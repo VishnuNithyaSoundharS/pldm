@@ -6,6 +6,7 @@
 #include "common/utils.hpp"
 
 #include <libpldm/base.h>
+#include <linux/mctp.h>
 #include <sys/socket.h>
 
 #include <phosphor-logging/lg2.hpp>

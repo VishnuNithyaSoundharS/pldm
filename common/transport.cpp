@@ -74,17 +74,6 @@ static constexpr uint8_t MCTP_EID_VALID_MAX = 255;
         return nullptr;
     }
 
-    for (const auto eid :
-         std::views::iota(MCTP_EID_VALID_MIN, MCTP_EID_VALID_MAX))
-    {
-        int rc = pldm_transport_af_mctp_map_tid(impl.af_mctp, eid, eid);
-        if (rc)
-        {
-            pldm_transport_af_mctp_destroy(impl.af_mctp);
-            return nullptr;
-        }
-    }
-
     /* Listen for requests on any interface */
     if (listening && pldm_transport_af_mctp_bind(impl.af_mctp, nullptr, 0))
     {
