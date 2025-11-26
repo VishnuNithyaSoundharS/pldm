@@ -500,7 +500,7 @@ int pldm::responder::oem_ibm_platform::Handler::sendEventToHost(
                 "RC", rc, "CC", completionCode);
         }
     };
-    auto rc = handler->registerRequest(
+    auto rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg),
         std::move(oemPlatformEventMessageResponseHandler));

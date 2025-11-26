@@ -149,7 +149,7 @@ uint8_t HostLampTest::setHostStateEffecter(uint16_t effecterID)
         }
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_SET_STATE_EFFECTER_STATES,
         std::move(requestMsg),
         std::move(setStateEffecterStatesResponseHandler));

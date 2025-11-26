@@ -158,8 +158,9 @@ static std::optional<Response> processRxMsg(
     {
         auto response = reinterpret_cast<const pldm_msg*>(hdr);
         size_t responseLen = requestMsg.size() - sizeof(struct pldm_msg_hdr);
-        handler.handleResponse(eid, hdrFields.instance, hdrFields.pldm_type,
-                               hdrFields.command, response, responseLen);
+        handler.handleResponse(pldm::DefaultNetworkId, eid, hdrFields.instance,
+                               hdrFields.pldm_type, hdrFields.command, response,
+                               responseLen);
     }
     return std::nullopt;
 }

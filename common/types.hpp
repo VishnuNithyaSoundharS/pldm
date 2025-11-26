@@ -69,6 +69,11 @@ using MctpInfos = std::vector<MctpInfo>;
 #define MCTP_START_VALID_EID 8
 constexpr uint8_t BmcMctpEid = 8;
 
+/**
+ * Default MCTP network ID for legacy code and single-network scenarios
+ */
+constexpr NetworkId DefaultNetworkId = 1;
+
 #define PLDM_PLATFORM_GETPDR_MAX_RECORD_BYTES 1024
 /* default the max event message buffer size BMC supported to 4K bytes */
 #define PLDM_PLATFORM_EVENT_MSG_MAX_BUFFER_SIZE 4096

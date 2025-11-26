@@ -1027,7 +1027,7 @@ void Handler::setEventReceiver()
                 "xyz.openbmc_project.bmc.pldm.InternalFailure");
         }
     };
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_PLATFORM, PLDM_SET_EVENT_RECEIVER,
         std::move(requestMsg), std::move(processSetEventReceiverResponse));
 
@@ -1119,7 +1119,7 @@ void Handler::sendPDRRepositoryChgEventbyPDRHandles(
                 static_cast<unsigned>(completionCode));
         }
     };
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg), std::move(platformEventMessageResponseHandler));
     if (rc)

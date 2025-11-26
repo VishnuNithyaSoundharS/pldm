@@ -76,7 +76,7 @@ void DbusToFileHandler::sendNewFileAvailableCmd(uint64_t fileSize)
             reportResourceDumpFailure("DecodeNewFileResp");
         }
     };
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_OEM, PLDM_NEW_FILE_AVAILABLE,
         std::move(requestMsg), std::move(newFileAvailableRespHandler));
     if (rc)
@@ -289,7 +289,7 @@ void DbusToFileHandler::newFileAvailableSendToHost(
             }
         }
     };
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_OEM, PLDM_NEW_FILE_AVAILABLE,
         std::move(requestMsg), std::move(newFileAvailableRespHandler));
     if (rc)

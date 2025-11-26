@@ -66,7 +66,7 @@ void DbusToPLDMEvent::sendEventMsg(uint8_t eventType,
         }
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg), std::move(platformEventMessageResponseHandler));
     if (rc)

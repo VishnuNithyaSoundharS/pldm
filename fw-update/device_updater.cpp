@@ -55,7 +55,7 @@ void DeviceUpdater::startFwUpdateFlow()
             "EID", eid, "RC", rc);
     }
 
-    rc = updateManager->handler.registerRequest(
+    rc = updateManager->handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_REQUEST_UPDATE, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->requestUpdate(eid, response, respMsgLen);
@@ -187,7 +187,7 @@ void DeviceUpdater::sendPassCompTableRequest(size_t offset)
             "EID", eid, "RC", rc);
     }
 
-    rc = updateManager->handler.registerRequest(
+    rc = updateManager->handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_PASS_COMPONENT_TABLE,
         std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -323,7 +323,7 @@ void DeviceUpdater::sendUpdateComponentRequest(size_t offset)
             "EID", eid, "RC", rc);
     }
 
-    rc = updateManager->handler.registerRequest(
+    rc = updateManager->handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_UPDATE_COMPONENT, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->updateComponent(eid, response, respMsgLen);
@@ -726,7 +726,7 @@ void DeviceUpdater::sendActivateFirmwareRequest()
             "EID", eid, "RC", rc);
     }
 
-    rc = updateManager->handler.registerRequest(
+    rc = updateManager->handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_ACTIVATE_FIRMWARE, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->activateFirmware(eid, response, respMsgLen);
@@ -796,7 +796,7 @@ void DeviceUpdater::sendCancelUpdateComponentRequest()
         return;
     }
 
-    rc = updateManager->handler.registerRequest(
+    rc = updateManager->handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_CANCEL_UPDATE_COMPONENT,
         std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {

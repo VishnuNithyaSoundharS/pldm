@@ -102,7 +102,7 @@ int sendBiosAttributeUpdateEvent(
                 "RC", rc, "CC", completionCode);
         }
     };
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg), std::move(platformEventMessageResponseHandler));
     if (rc)

@@ -594,7 +594,7 @@ int HostEffecterParser::setTerminusNumericEffecter(
         }
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctpEid, instanceId, PLDM_PLATFORM, PLDM_SET_NUMERIC_EFFECTER_VALUE,
         std::move(requestMsg), std::move(setNumericEffecterRespHandler));
     if (rc)
@@ -670,7 +670,7 @@ int HostEffecterParser::setHostStateEffecter(
         }
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctpEid, instanceId, PLDM_PLATFORM, PLDM_SET_STATE_EFFECTER_STATES,
         std::move(requestMsg), std::move(setStateEffecterStatesRespHandler));
     if (rc)

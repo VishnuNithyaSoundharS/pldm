@@ -64,7 +64,7 @@ void InventoryManager::sendQueryDeviceIdentifiersRequest(mctp_eid_t eid)
             "Failed to encode QueryDeviceIdentifiers request");
     }
 
-    rc = handler.registerRequest(
+    rc = handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_QUERY_DEVICE_IDENTIFIERS,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -198,7 +198,7 @@ void InventoryManager::sendQueryDownstreamDevicesRequest(mctp_eid_t eid)
             "Failed to encode query downstream devices request");
     }
 
-    rc = handler.registerRequest(
+    rc = handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_QUERY_DOWNSTREAM_DEVICES,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -312,7 +312,7 @@ void InventoryManager::sendQueryDownstreamIdentifiersRequest(
             "Failed to encode query downstream identifiers request");
     }
 
-    rc = handler.registerRequest(
+    rc = handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_QUERY_DOWNSTREAM_IDENTIFIERS,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -485,7 +485,7 @@ void InventoryManager::sendGetDownstreamFirmwareParametersRequest(
             "Failed to encode query downstream firmware parameters request");
     }
 
-    rc = handler.registerRequest(
+    rc = handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_QUERY_DOWNSTREAM_FIRMWARE_PARAMETERS,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -595,7 +595,7 @@ void InventoryManager::sendGetFirmwareParametersRequest(mctp_eid_t eid)
         return;
     }
 
-    rc = handler.registerRequest(
+    rc = handler.registerRequest(pldm::DefaultNetworkId, 
         eid, instanceId, PLDM_FWUP, PLDM_GET_FIRMWARE_PARAMETERS,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {

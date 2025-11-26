@@ -218,7 +218,7 @@ void HostPDRHandler::getHostPDR(uint32_t nextRecordHandle)
         return;
     }
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_GET_PDR,
         std::move(requestMsg),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
@@ -445,7 +445,7 @@ void HostPDRHandler::sendPDRRepositoryChgEvent(std::vector<uint8_t>&& pdrTypes,
         }
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_PLATFORM, PLDM_PLATFORM_EVENT_MESSAGE,
         std::move(requestMsg), std::move(platformEventMessageResponseHandler));
     if (rc)
@@ -758,7 +758,7 @@ void HostPDRHandler::setHostFirmwareCondition()
              response->payload[0]);
         this->responseReceived = true;
     };
-    rc = handler->registerRequest(mctp_eid, instanceId, PLDM_BASE,
+    rc = handler->registerRequest(pldm::DefaultNetworkId, mctp_eid, instanceId, PLDM_BASE,
                                   PLDM_GET_PLDM_VERSION, std::move(requestMsg),
                                   std::move(getPLDMVersionHandler));
     if (rc)
@@ -925,7 +925,7 @@ void HostPDRHandler::setHostSensorState(const PDRList& stateSensorPDRs)
                     }
                 };
 
-                rc = handler->registerRequest(
+                rc = handler->registerRequest(pldm::DefaultNetworkId, 
                     mctp_eid, instanceId, PLDM_PLATFORM,
                     PLDM_GET_STATE_SENSOR_READINGS, std::move(requestMsg),
                     std::move(getStateSensorReadingRespHandler));
@@ -998,7 +998,7 @@ void HostPDRHandler::getFRURecordTableMetadataByRemote(
         this->getFRURecordTableByRemote(fruRecordSetPDRs, total);
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE_METADATA,
         std::move(requestMsg),
         std::move(getFruRecordTableMetadataResponseHandler));
@@ -1086,7 +1086,7 @@ void HostPDRHandler::getFRURecordTableByRemote(const PDRList& fruRecordSetPDRs,
         this->setFRUDataOnDBus(fruRecordSetPDRs, fruRecordData);
     };
 
-    rc = handler->registerRequest(
+    rc = handler->registerRequest(pldm::DefaultNetworkId, 
         mctp_eid, instanceId, PLDM_FRU, PLDM_GET_FRU_RECORD_TABLE,
         std::move(requestMsg), std::move(getFruRecordTableResponseHandler));
     if (rc != PLDM_SUCCESS)
