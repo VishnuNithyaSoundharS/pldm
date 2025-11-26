@@ -28,6 +28,7 @@ class HandlerTest : public testing::Test
     HandlerTest() : event(sdeventplus::Event::get_default()), instanceIdDb() {}
 
     int fd = 0;
+    NetworkId networkId = 1;
     mctp_eid_t eid = 0;
     PldmTransport* pldmTransport = nullptr;
     sdeventplus::Event event;
@@ -81,7 +82,7 @@ TEST_F(HandlerTest, singleRequestResponseScenario)
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
-    auto rc = reqHandler.registerRequest(
+    auto rc = reqHandler.registerRequest(networkId, 
         eid, instanceId, 0, 0, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->pldmResponseCallBack(eid, response, respMsgLen);
@@ -90,7 +91,7 @@ TEST_F(HandlerTest, singleRequestResponseScenario)
 
     pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t));
     auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
-    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+    reqHandler.handleResponse(networkId, eid, instanceId, 0, 0, responsePtr,
                               response.size());
 
     EXPECT_EQ(validResponse, true);
@@ -104,7 +105,7 @@ TEST_F(HandlerTest, singleRequestInstanceIdTimerExpired)
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
-    auto rc = reqHandler.registerRequest(
+    auto rc = reqHandler.registerRequest(networkId, 
         eid, instanceId, 0, 0, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->pldmResponseCallBack(eid, response, respMsgLen);
@@ -125,7 +126,7 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
     pldm::Request request{};
     auto instanceId = instanceIdDb.next(eid);
     EXPECT_EQ(instanceId, 0);
-    auto rc = reqHandler.registerRequest(
+    auto rc = reqHandler.registerRequest(networkId, 
         eid, instanceId, 0, 0, std::move(request),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->pldmResponseCallBack(eid, response, respMsgLen);
@@ -135,7 +136,7 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
     pldm::Request requestNxt{};
     auto instanceIdNxt = instanceIdDb.next(eid);
     EXPECT_EQ(instanceIdNxt, 1);
-    rc = reqHandler.registerRequest(
+    rc = reqHandler.registerRequest(networkId, 
         eid, instanceIdNxt, 0, 0, std::move(requestNxt),
         [this](mctp_eid_t eid, const pldm_msg* response, size_t respMsgLen) {
             this->pldmResponseCallBack(eid, response, respMsgLen);
@@ -144,7 +145,7 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
 
     pldm::Response response(sizeof(pldm_msg_hdr) + sizeof(uint8_t));
     auto responsePtr = reinterpret_cast<const pldm_msg*>(response.data());
-    reqHandler.handleResponse(eid, instanceId, 0, 0, responsePtr,
+    reqHandler.handleResponse(networkId, eid, instanceId, 0, 0, responsePtr,
                               response.size());
     EXPECT_EQ(validResponse, true);
     EXPECT_EQ(callbackCount, 1);
@@ -154,7 +155,7 @@ TEST_F(HandlerTest, multipleRequestResponseScenario)
     // simulate a delayed response for the first request
     waitEventExpiry(milliseconds(500));
 
-    reqHandler.handleResponse(eid, instanceIdNxt, 0, 0, responsePtr,
+    reqHandler.handleResponse(networkId, eid, instanceIdNxt, 0, 0, responsePtr,
                               response.size());
 
     EXPECT_EQ(validResponse, true);
@@ -202,7 +203,7 @@ TEST_F(HandlerTest, singleRequestResponseScenarioUsingCoroutine)
     pldm::Response mockResponse(sizeof(pldm_msg_hdr) + sizeof(uint8_t), 0);
     auto mockResponsePtr =
         reinterpret_cast<const pldm_msg*>(mockResponse.data());
-    reqHandler.handleResponse(eid, instanceId, 0, 0, mockResponsePtr,
+    reqHandler.handleResponse(networkId, eid, instanceId, 0, 0, mockResponsePtr,
                               mockResponse.size() - sizeof(pldm_msg_hdr));
 
     stdexec::sync_wait(scope.on_empty());
@@ -296,7 +297,7 @@ TEST_F(HandlerTest, asyncRequestResponseByCoroutine)
 
     // Send response back to resume getTID coroutine to update respTid by
     // calling  reqHandler.handleResponse() manually
-    reqHandler.handleResponse(eid, instanceId, PLDM_BASE, PLDM_GET_TID,
+    reqHandler.handleResponse(networkId, eid, instanceId, PLDM_BASE, PLDM_GET_TID,
                               mockResponseMsg,
                               mockResponse.size() - sizeof(pldm_msg_hdr));
 
