@@ -61,8 +61,10 @@ struct RequestKeyHasher
 {
     std::size_t operator()(const RequestKey& key) const
     {
-        return (static_cast<size_t>(key.networkId) << 32 | key.eid << 24 |
-                key.instanceId << 16 | key.type << 8 | key.command);
+        return (static_cast<uint64_t>(key.networkId) << 32 |
+                static_cast<uint64_t>(key.eid) << 24 |
+                static_cast<uint64_t>(key.instanceId) << 16 |
+                static_cast<uint64_t>(key.type) << 8 | key.command);
     }
 };
 

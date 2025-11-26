@@ -35,15 +35,15 @@ std::optional<MctpInfo> TerminusManager::toMctpInfo(const pldm_tid_t& tid)
 
 std::optional<pldm_tid_t> TerminusManager::toTid(const MctpInfo& mctpInfo) const
 {
-    if (!pldm::utils::isValidEID(std::get<0>(mctpInfo)))
+    if (!pldm::utils::isValidEID(std::get<pldm::MctpInfoEidIndex>(mctpInfo)))
     {
         return std::nullopt;
     }
 
     auto mctpInfoTableIt = std::find_if(
         mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
-            return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
-                   (std::get<3>(v.second) == std::get<3>(mctpInfo));
+            return (std::get<0>(v.second) == std::get<pldm::MctpInfoEidIndex>(mctpInfo)) &&
+                   (std::get<3>(v.second) == std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo));
         });
     if (mctpInfoTableIt == mctpInfoTable.end())
     {
@@ -60,7 +60,7 @@ std::optional<pldm_tid_t> TerminusManager::storeTerminusInfo(
         return std::nullopt;
     }
 
-    if (!pldm::utils::isValidEID(std::get<0>(mctpInfo)))
+    if (!pldm::utils::isValidEID(std::get<pldm::MctpInfoEidIndex>(mctpInfo)))
     {
         return std::nullopt;
     }
@@ -79,15 +79,15 @@ std::optional<pldm_tid_t> TerminusManager::storeTerminusInfo(
 
 std::optional<pldm_tid_t> TerminusManager::mapTid(const MctpInfo& mctpInfo)
 {
-    if (!pldm::utils::isValidEID(std::get<0>(mctpInfo)))
+    if (!pldm::utils::isValidEID(std::get<pldm::MctpInfoEidIndex>(mctpInfo)))
     {
         return std::nullopt;
     }
 
     auto mctpInfoTableIt = std::find_if(
         mctpInfoTable.begin(), mctpInfoTable.end(), [&mctpInfo](auto& v) {
-            return (std::get<0>(v.second) == std::get<0>(mctpInfo)) &&
-                   (std::get<3>(v.second) == std::get<3>(mctpInfo));
+            return (std::get<0>(v.second) == std::get<pldm::MctpInfoEidIndex>(mctpInfo)) &&
+                   (std::get<3>(v.second) == std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo));
         });
     if (mctpInfoTableIt != mctpInfoTable.end())
     {
@@ -142,8 +142,8 @@ void TerminusManager::updateMctpEndpointAvailability(const MctpInfo& mctpInfo,
 
 std::string TerminusManager::constructEndpointObjPath(const MctpInfo& mctpInfo)
 {
-    std::string eidStr = std::to_string(std::get<0>(mctpInfo));
-    std::string networkIDStr = std::to_string(std::get<3>(mctpInfo));
+    std::string eidStr = std::to_string(std::get<pldm::MctpInfoEidIndex>(mctpInfo));
+    std::string networkIDStr = std::to_string(std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo));
     return std::format("{}/networks/{}/endpoints/{}", MCTPPath, networkIDStr,
                        eidStr);
 }
@@ -175,9 +175,9 @@ TerminiMapper::iterator TerminusManager::findTerminusPtr(
             auto terminusMctpInfo = toMctpInfo(terminusPair.first);
             return (terminusMctpInfo &&
                     (std::get<0>(terminusMctpInfo.value()) ==
-                     std::get<0>(mctpInfo)) &&
+                     std::get<pldm::MctpInfoEidIndex>(mctpInfo)) &&
                     (std::get<3>(terminusMctpInfo.value()) ==
-                     std::get<3>(mctpInfo)));
+                     std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo)));
         });
 
     return foundIter;
@@ -207,8 +207,8 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
                 {
                     lg2::error(
                         "Failed to initialize terminus with EID {EID}, networkId {NETWORK}, response code {RC}.",
-                        "EID", std::get<0>(mctpInfo), "NETWORK",
-                        std::get<3>(mctpInfo), "RC", rc);
+                        "EID", std::get<pldm::MctpInfoEidIndex>(mctpInfo), "NETWORK",
+                        std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo), "RC", rc);
                     mctpInfoAvailTable.erase(mctpInfo);
                     terminusInitFailed = true;
                     continue;
@@ -221,8 +221,8 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
             {
                 lg2::error(
                     "Failed to get TID for terminus with EID {EID}, networkId {NETWORK}.",
-                    "EID", std::get<0>(mctpInfo), "NETWORK",
-                    std::get<3>(mctpInfo));
+                    "EID", std::get<pldm::MctpInfoEidIndex>(mctpInfo), "NETWORK",
+                    std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo));
                 mctpInfoAvailTable.erase(mctpInfo);
                 terminusInitFailed = true;
                 continue;
@@ -270,8 +270,8 @@ void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
 
 exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
-    NetworkId networkId = std::get<3>(mctpInfo);
-    mctp_eid_t eid = std::get<0>(mctpInfo);
+    NetworkId networkId = std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo);
+    mctp_eid_t eid = std::get<pldm::MctpInfoEidIndex>(mctpInfo);
     pldm_tid_t tid = 0;
     bool isMapped = false;
     auto rc = co_await getTidOverMctp(networkId, eid, &tid);
@@ -298,9 +298,9 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
             /* The discovered terminus has the same MCTP Info */
             if (terminusMctpInfo &&
                 (std::get<0>(terminusMctpInfo.value()) ==
-                 std::get<0>(mctpInfo)) &&
+                 std::get<pldm::MctpInfoEidIndex>(mctpInfo)) &&
                 (std::get<3>(terminusMctpInfo.value()) ==
-                 std::get<3>(mctpInfo)))
+                 std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo)))
             {
                 co_return PLDM_SUCCESS;
             }
@@ -434,7 +434,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     termini[tid]->setSupportedCommands(pldmCmds);
 
     /* Use the MCTP target name as the default terminus name */
-    MctpInfoName mctpInfoName = std::get<4>(mctpInfo);
+    MctpInfoName mctpInfoName = std::get<pldm::MctpInfoNameIndex>(mctpInfo);
     if (mctpInfoName.has_value())
     {
         lg2::info("Terminus {TID} has default Terminus Name {NAME}", "NAME",
@@ -696,8 +696,8 @@ exec::task<int> TerminusManager::sendRecvPldmMsg(
         co_return PLDM_ERROR_NOT_READY;
     }
 
-    auto networkId = std::get<3>(mctpInfo.value());
-    auto eid = std::get<0>(mctpInfo.value());
+    auto networkId = std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo.value());
+    auto eid = std::get<pldm::MctpInfoEidIndex>(mctpInfo.value());
     auto requestMsg = new (request.data()) pldm_msg;
     requestMsg->hdr.instance_id = instanceIdDb.next(eid);
     auto rc = co_await sendRecvPldmMsgOverMctp(networkId, eid, request,

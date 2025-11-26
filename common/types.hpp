@@ -48,6 +48,13 @@ using MctpInfoName = std::optional<std::string>;
  */
 using MctpInfo = std::tuple<eid, UUID, MctpMedium, NetworkId, MctpInfoName>;
 
+/** @brief MctpInfo tuple indices for accessing fields */
+constexpr size_t MctpInfoEidIndex = 0;
+constexpr size_t MctpInfoUuidIndex = 1;
+constexpr size_t MctpInfoMediumIndex = 2;
+constexpr size_t MctpInfoNetworkIdIndex = 3;
+constexpr size_t MctpInfoNameIndex = 4;
+
 /** @brief Type definition of MCTP endpoint D-Bus properties in
  *         xyz.openbmc_project.MCTP.Endpoint D-Bus interface.
  *

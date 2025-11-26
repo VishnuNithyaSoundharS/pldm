@@ -271,7 +271,7 @@ void MctpDiscovery::removeFromExistingMctpInfos(MctpInfos& mctpInfos,
     for (const auto& mctpInfo : removedInfos)
     {
         info("Removing Endpoint networkId '{NETWORK}' and  EID '{EID}'",
-             "NETWORK", std::get<3>(mctpInfo), "EID", std::get<0>(mctpInfo));
+             "NETWORK", std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo), "EID", std::get<pldm::MctpInfoEidIndex>(mctpInfo));
         existingMctpInfos.erase(std::remove(existingMctpInfos.begin(),
                                             existingMctpInfos.end(), mctpInfo),
                                 existingMctpInfos.end());
@@ -333,8 +333,8 @@ void MctpDiscovery::propertiesChangedCb(sdbusplus::message_t& msg)
                     // available Add it to existingMctpInfos
                     info(
                         "Adding Endpoint networkId {NETWORK} ID {EID} by propertiesChanged signal",
-                        "NETWORK", std::get<3>(mctpInfo), "EID",
-                        unsigned(std::get<0>(mctpInfo)));
+                        "NETWORK", std::get<pldm::MctpInfoNetworkIdIndex>(mctpInfo), "EID",
+                        unsigned(std::get<pldm::MctpInfoEidIndex>(mctpInfo)));
                     addToExistingMctpInfos(MctpInfos(1, mctpInfo));
                     handleMctpEndpoints(MctpInfos(1, mctpInfo));
                 }
