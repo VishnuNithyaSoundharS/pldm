@@ -91,9 +91,10 @@ class TerminusManager
                                     const pldm_msg** responseMsg,
                                     size_t* responseLen);
 
-    /** @brief Send request PLDM message to eid. The function will
+    /** @brief Send request PLDM message to endpoint. The function will
      *         return when received the response message from terminus.
      *
+     *  @param[in] networkId - Destination Network ID
      *  @param[in] eid - Destination EID
      *  @param[in] request - request PLDM message
      *  @param[out] responseMsg - response PLDM message
@@ -101,8 +102,8 @@ class TerminusManager
      *  @return coroutine return_value - PLDM completion code
      */
     virtual exec::task<int> sendRecvPldmMsgOverMctp(
-        mctp_eid_t eid, Request& request, const pldm_msg** responseMsg,
-        size_t* responseLen);
+        NetworkId networkId, mctp_eid_t eid, Request& request,
+        const pldm_msg** responseMsg, size_t* responseLen);
 
     /** @brief member functions to map/unmap tid
      */
@@ -202,22 +203,26 @@ class TerminusManager
      */
     exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo);
 
-    /** @brief Send getTID PLDM command to destination EID and then return the
-     *         value of tid in reference parameter.
+    /** @brief Send getTID PLDM command to destination endpoint and then return
+     *         the value of tid in reference parameter.
      *
+     *  @param[in] networkId - Destination Network ID
      *  @param[in] eid - Destination EID
      *  @param[out] tid - Terminus TID
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid);
+    exec::task<int> getTidOverMctp(NetworkId networkId, mctp_eid_t eid,
+                                   pldm_tid_t* tid);
 
-    /** @brief Send setTID command to destination EID.
+    /** @brief Send setTID command to destination endpoint.
      *
+     *  @param[in] networkId - Destination Network ID
      *  @param[in] eid - Destination EID
      *  @param[in] tid - Destination TID
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> setTidOverMctp(mctp_eid_t eid, pldm_tid_t tid);
+    exec::task<int> setTidOverMctp(NetworkId networkId, mctp_eid_t eid,
+                                   pldm_tid_t tid);
 
     /** @brief Send getPLDMTypes command to destination TID and then return the
      *         value of supportedTypes in reference parameter.

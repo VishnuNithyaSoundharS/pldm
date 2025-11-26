@@ -270,10 +270,11 @@ void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
 
 exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 {
+    NetworkId networkId = std::get<3>(mctpInfo);
     mctp_eid_t eid = std::get<0>(mctpInfo);
     pldm_tid_t tid = 0;
     bool isMapped = false;
-    auto rc = co_await getTidOverMctp(eid, &tid);
+    auto rc = co_await getTidOverMctp(networkId, eid, &tid);
     if (rc != PLDM_SUCCESS)
     {
         lg2::error("Failed to Get Terminus ID, error {ERROR}.", "ERROR", rc);
@@ -340,7 +341,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         }
 
         tid = mappedTid.value();
-        rc = co_await setTidOverMctp(eid, tid);
+        rc = co_await setTidOverMctp(networkId, eid, tid);
         if (rc != PLDM_SUCCESS)
         {
             if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
@@ -445,14 +446,14 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
 }
 
 exec::task<int> TerminusManager::sendRecvPldmMsgOverMctp(
-    mctp_eid_t eid, Request& request, const pldm_msg** responseMsg,
-    size_t* responseLen)
+    NetworkId networkId, mctp_eid_t eid, Request& request,
+    const pldm_msg** responseMsg, size_t* responseLen)
 {
     int rc = 0;
     try
     {
         std::tie(rc, *responseMsg, *responseLen) =
-            co_await handler.sendRecvMsg(eid, std::move(request));
+            co_await handler.sendRecvMsg(networkId, eid, std::move(request));
     }
     catch (const sdbusplus::exception_t& e)
     {
@@ -472,7 +473,9 @@ exec::task<int> TerminusManager::sendRecvPldmMsgOverMctp(
     co_return rc;
 }
 
-exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid)
+exec::task<int> TerminusManager::getTidOverMctp(NetworkId networkId,
+                                                 mctp_eid_t eid,
+                                                 pldm_tid_t* tid)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr));
@@ -489,7 +492,7 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid)
 
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(networkId, eid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
@@ -518,7 +521,8 @@ exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid)
     co_return completionCode;
 }
 
-exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, pldm_tid_t tid)
+exec::task<int> TerminusManager::setTidOverMctp(NetworkId networkId,
+                                                 mctp_eid_t eid, pldm_tid_t tid)
 {
     auto instanceId = instanceIdDb.next(eid);
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
@@ -535,7 +539,7 @@ exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, pldm_tid_t tid)
 
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(networkId, eid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
@@ -692,11 +696,12 @@ exec::task<int> TerminusManager::sendRecvPldmMsg(
         co_return PLDM_ERROR_NOT_READY;
     }
 
+    auto networkId = std::get<3>(mctpInfo.value());
     auto eid = std::get<0>(mctpInfo.value());
     auto requestMsg = new (request.data()) pldm_msg;
     requestMsg->hdr.instance_id = instanceIdDb.next(eid);
-    auto rc = co_await sendRecvPldmMsgOverMctp(eid, request, responseMsg,
-                                               responseLen);
+    auto rc = co_await sendRecvPldmMsgOverMctp(networkId, eid, request,
+                                               responseMsg, responseLen);
 
     if (rc == PLDM_ERROR_NOT_READY)
     {
