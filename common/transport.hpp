@@ -88,6 +88,13 @@ class PldmTransport
     pldm_requester_rc_t sendRecvMsg(pldm_tid_t tid, const void* tx,
                                     size_t txLen, void*& rx, size_t& rxLen);
 
+    /** @brief Get the AF_MCTP transport context
+     *
+     * @return pointer to pldm_transport_af_mctp structure, or nullptr if not
+     *         using AF_MCTP transport
+     */
+    struct pldm_transport_af_mctp* getAfMctpTransport() const;
+
   private:
     /** @brief A pollfd object for holding a file descriptor from the libpldm
      *         transport implementation

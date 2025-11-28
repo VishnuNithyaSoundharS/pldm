@@ -2,7 +2,11 @@
 
 #include "manager.hpp"
 
+#include <libpldm/transport/af-mctp.h>
+
 #include <phosphor-logging/lg2.hpp>
+
+#include <cstdint>
 
 PHOSPHOR_LOG2_USING;
 
@@ -202,7 +206,54 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
             if (it == termini.end())
             {
                 mctpInfoAvailTable[mctpInfo] = true;
-                auto rc = co_await initMctpTerminus(mctpInfo);
+
+                // Map TID to Network ID and EID
+                pldm_tid_t tid = 0;
+                auto tidPoolIt =
+                    std::find(tidPool.begin(), tidPool.end(), false);
+                if (tidPoolIt == tidPool.end())
+                {
+                    lg2::error(
+                        "No available TID to assign for terminus with EID {EID}, networkId {NETWORK}.",
+                        "EID", std::get<0>(mctpInfo), "NETWORK",
+                        std::get<3>(mctpInfo));
+                    mctpInfoAvailTable.erase(mctpInfo);
+                    terminusInitFailed = true;
+                    continue;
+                }
+                tid = std::distance(tidPool.begin(), tidPoolIt);
+
+                mctp_eid_t eid = std::get<0>(mctpInfo);
+                uint32_t networkId = std::get<3>(mctpInfo);
+
+                // Get the transport context and map TID
+                auto* transport_ctx = handler.getTransportContext();
+                if (transport_ctx)
+                {
+                    int rc = pldm_transport_af_mctp_map_tid_network(
+                        transport_ctx, tid, eid, networkId);
+                    if (rc != PLDM_SUCCESS)
+                    {
+                        lg2::error(
+                            "Failed to map TID {TID} to EID {EID}, networkId {NETWORK}, error {RC}.",
+                            "TID", tid, "EID", eid, "NETWORK", networkId, "RC",
+                            rc);
+                        mctpInfoAvailTable.erase(mctpInfo);
+                        terminusInitFailed = true;
+                        continue;
+                    }
+                }
+                else
+                {
+                    lg2::error("Failed to get transport context for EID {EID}",
+                               "EID", eid);
+                    mctpInfoAvailTable.erase(mctpInfo);
+                    terminusInitFailed = true;
+                    continue;
+                }
+                // End Map TID to Network ID and EID
+
+                auto rc = co_await initMctpTerminus(mctpInfo, tid);
                 if (rc != PLDM_SUCCESS)
                 {
                     lg2::error(
@@ -268,12 +319,12 @@ void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
     }
 }
 
-exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
+exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo,
+                                                  pldm_tid_t tid)
 {
-    mctp_eid_t eid = std::get<0>(mctpInfo);
-    pldm_tid_t tid = 0;
+    pldm_tid_t responseTID = PLDM_TID_UNASSIGNED;
     bool isMapped = false;
-    auto rc = co_await getTidOverMctp(eid, &tid);
+    auto rc = co_await getTidOverMctp(mctpInfo, tid, &responseTID);
     if (rc != PLDM_SUCCESS)
     {
         lg2::error("Failed to Get Terminus ID, error {ERROR}.", "ERROR", rc);
@@ -287,10 +338,10 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     }
 
     /* Terminus already has TID */
-    if (tid != PLDM_TID_UNASSIGNED)
+    if (responseTID != PLDM_TID_UNASSIGNED && responseTID == tid)
     {
         /* TID is used by one discovered terminus */
-        auto it = termini.find(tid);
+        auto it = termini.find(responseTID);
         if (it != termini.end())
         {
             auto terminusMctpInfo = toMctpInfo(it->first);
@@ -316,11 +367,11 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         /* Use the terminus TID for mapping */
         else
         {
-            auto mappedTid = storeTerminusInfo(mctpInfo, tid);
+            auto mappedTid = storeTerminusInfo(mctpInfo, responseTID);
             if (!mappedTid)
             {
                 lg2::error("Failed to store Terminus Info for terminus {TID}.",
-                           "TID", tid);
+                           "TID", responseTID);
                 co_return PLDM_ERROR;
             }
             isMapped = true;
@@ -331,6 +382,7 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
     {
         // Assigning a tid. If it has been mapped, mapTid()
         // returns the tid assigned before.
+        lg2::info("Value of tid before setTID: {TID}", "TID", tid);
         auto mappedTid = mapTid(mctpInfo);
         if (!mappedTid)
         {
@@ -340,7 +392,8 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo)
         }
 
         tid = mappedTid.value();
-        rc = co_await setTidOverMctp(eid, tid);
+        lg2::info("Value of mapped TID: {TID}", "TID", tid);
+        rc = co_await setTidOverMctp(mctpInfo, tid);
         if (rc != PLDM_SUCCESS)
         {
             if (rc == PLDM_ERROR_UNSUPPORTED_PLDM_CMD)
@@ -472,83 +525,103 @@ exec::task<int> TerminusManager::sendRecvPldmMsgOverMctp(
     co_return rc;
 }
 
-exec::task<int> TerminusManager::getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid)
+exec::task<int> TerminusManager::getTidOverMctp(const MctpInfo& mctpInfo,
+                                                pldm_tid_t tid, pldm_tid_t* responseTID)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    mctp_eid_t eid = std::get<0>(mctpInfo);
+    uint32_t networkID = std::get<3>(mctpInfo);
+    auto instanceId = instanceIdDb.next(tid);
     Request request(sizeof(pldm_msg_hdr));
     auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_get_tid_req(instanceId, requestMsg);
     if (rc)
     {
-        instanceIdDb.free(eid, instanceId);
+        instanceIdDb.free(tid, instanceId);
         lg2::error(
-            "Failed to encode request GetTID for endpoint ID {EID}, error {RC} ",
-            "EID", eid, "RC", rc);
+            "Failed to encode request GetTID for network ID {NETID}, Endpoint {EID}, error {RC} ",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return rc;
     }
 
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(tid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
-        lg2::error("Failed to send GetTID for Endpoint {EID}, error {RC}",
-                   "EID", eid, "RC", rc);
+        lg2::error(
+            "Failed to send GetTID for network ID {NETID}, Endpoint {EID}, error {RC}",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return rc;
     }
 
     uint8_t completionCode = 0;
-    rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode, tid);
+    rc = decode_get_tid_resp(responseMsg, responseLen, &completionCode,
+                             responseTID);
+
+    // print if not matching and not zero
     if (rc)
     {
         lg2::error(
-            "Failed to decode response GetTID for Endpoint ID {EID}, error {RC} ",
-            "EID", eid, "RC", rc);
+            "Failed to decode response GetTID for network ID {NETID}, Endpoint ID {EID}, error {RC} ",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return rc;
     }
 
     if (completionCode != PLDM_SUCCESS)
     {
-        lg2::error("Error : GetTID for Endpoint ID {EID}, complete code {CC}.",
-                   "EID", eid, "CC", completionCode);
+        lg2::error(
+            "Error : GetTID for network ID {NETID}, Endpoint ID {EID}, complete code {CC}.",
+            "NETID", networkID, "EID", eid, "CC", completionCode);
         co_return rc;
+    }
+
+    if (*responseTID != tid && *responseTID != PLDM_TID_UNASSIGNED)
+    {
+        lg2::info(
+            "Terminus with EID {EID}, network ID {NETID} has different TID {RESP_TID} than requested TID {REQ_TID}.",
+            "EID", eid, "NETID", networkID, "RESP_TID", *responseTID,
+            "REQ_TID", tid);
     }
 
     co_return completionCode;
 }
 
-exec::task<int> TerminusManager::setTidOverMctp(mctp_eid_t eid, pldm_tid_t tid)
+exec::task<int> TerminusManager::setTidOverMctp(const MctpInfo& mctpInfo,
+                                                  pldm_tid_t tid)
 {
-    auto instanceId = instanceIdDb.next(eid);
+    mctp_eid_t eid = std::get<0>(mctpInfo);
+    uint32_t networkID = std::get<3>(mctpInfo);
+    auto instanceId = instanceIdDb.next(tid);
     Request request(sizeof(pldm_msg_hdr) + sizeof(pldm_set_tid_req));
     auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_set_tid_req(instanceId, tid, requestMsg);
     if (rc)
     {
-        instanceIdDb.free(eid, instanceId);
+        instanceIdDb.free(tid, instanceId);
         lg2::error(
-            "Failed to encode request SetTID for endpoint ID {EID}, error {RC} ",
-            "EID", eid, "RC", rc);
+            "Failed to encode request SetTID for network ID {NETID}, endpoint ID {EID}, error {RC} ",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return rc;
     }
 
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
-    rc = co_await sendRecvPldmMsgOverMctp(eid, request, &responseMsg,
+    rc = co_await sendRecvPldmMsgOverMctp(tid, request, &responseMsg,
                                           &responseLen);
     if (rc)
     {
-        lg2::error("Failed to send SetTID for Endpoint {EID}, error {RC}",
-                   "EID", eid, "RC", rc);
+        lg2::error(
+            "Failed to send SetTID for network ID {NETID}, Endpoint {EID}, error {RC}",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return rc;
     }
 
     if (responseMsg == nullptr || responseLen != PLDM_SET_TID_RESP_BYTES)
     {
         lg2::error(
-            "Failed to decode response SetTID for Endpoint ID {EID}, error {RC} ",
-            "EID", eid, "RC", rc);
+            "Failed to decode response SetTID for network ID {NETID}, Endpoint ID {EID}, error {RC} ",
+            "NETID", networkID, "EID", eid, "RC", rc);
         co_return PLDM_ERROR_INVALID_LENGTH;
     }
 
@@ -692,10 +765,9 @@ exec::task<int> TerminusManager::sendRecvPldmMsg(
         co_return PLDM_ERROR_NOT_READY;
     }
 
-    auto eid = std::get<0>(mctpInfo.value());
     auto requestMsg = new (request.data()) pldm_msg;
-    requestMsg->hdr.instance_id = instanceIdDb.next(eid);
-    auto rc = co_await sendRecvPldmMsgOverMctp(eid, request, responseMsg,
+    requestMsg->hdr.instance_id = instanceIdDb.next(tid);
+    auto rc = co_await sendRecvPldmMsgOverMctp(tid, request, responseMsg,
                                                responseLen);
 
     if (rc == PLDM_ERROR_NOT_READY)

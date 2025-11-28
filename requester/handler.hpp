@@ -409,6 +409,16 @@ class Handler
     stdexec::sender_of<stdexec::set_value_t(SendRecvCoResp)> auto sendRecvMsg(
         mctp_eid_t eid, pldm::Request&& request);
 
+    /** @brief Get the AF_MCTP transport context
+     *
+     *  @return pointer to pldm_transport_af_mctp structure, or nullptr if not
+     *          using AF_MCTP transport
+     */
+    struct pldm_transport_af_mctp* getTransportContext() const
+    {
+        return pldmTransport ? pldmTransport->getAfMctpTransport() : nullptr;
+    }
+
   private:
     PldmTransport* pldmTransport; //!< PLDM transport object
     sdeventplus::Event& event; //!< reference to PLDM daemon's main event loop

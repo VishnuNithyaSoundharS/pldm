@@ -200,24 +200,24 @@ class TerminusManager
      *  @param[in] mctpInfo - information of the MCTP endpoints
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo);
+    exec::task<int> initMctpTerminus(const MctpInfo& mctpInfo, pldm_tid_t tid);
 
-    /** @brief Send getTID PLDM command to destination EID and then return the
-     *         value of tid in reference parameter.
+    /** @brief Send getTID command to destination EID.
      *
-     *  @param[in] eid - Destination EID
-     *  @param[out] tid - Terminus TID
+     *  @param[in] mctpInfo - information of the MCTP endpoints
+     *  @param[in] tid - Destination TID
+     *  @param[out] responseTID - Returned TID from terminus
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> getTidOverMctp(mctp_eid_t eid, pldm_tid_t* tid);
+    exec::task<int> getTidOverMctp(const MctpInfo& mctpInfo, pldm_tid_t tid,
+                                   pldm_tid_t* responseTID);
 
     /** @brief Send setTID command to destination EID.
-     *
-     *  @param[in] eid - Destination EID
+     *  @param[in] mctpInfo - information of the MCTP endpoints
      *  @param[in] tid - Destination TID
      *  @return coroutine return_value - PLDM completion code
      */
-    exec::task<int> setTidOverMctp(mctp_eid_t eid, pldm_tid_t tid);
+    exec::task<int> setTidOverMctp(const MctpInfo& mctpInfo, pldm_tid_t tid);
 
     /** @brief Send getPLDMTypes command to destination TID and then return the
      *         value of supportedTypes in reference parameter.
