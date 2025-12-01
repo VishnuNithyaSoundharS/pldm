@@ -206,7 +206,7 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
             if (it == termini.end())
             {
                 mctpInfoAvailTable[mctpInfo] = true;
-
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
                 // Map TID to Network ID and EID
                 pldm_tid_t tid = 0;
                 auto tidPoolIt =
@@ -252,7 +252,7 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
                     continue;
                 }
                 // End Map TID to Network ID and EID
-
+#endif
                 auto rc = co_await initMctpTerminus(mctpInfo, tid);
                 if (rc != PLDM_SUCCESS)
                 {
@@ -281,6 +281,32 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
             addedTids.push_back(tid.value());
         }
 
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+        if (inventoryManager && !addedTids.empty())
+        {
+            try
+            {
+                // Build mctpInfoTable for added TIDs
+                std::map<pldm_tid_t, MctpInfo> addedMctpInfoTable;
+                for (const auto& tid : addedTids)
+                {
+                    auto mctpInfoOpt = toMctpInfo(tid);
+                    if (mctpInfoOpt.has_value())
+                    {
+                        addedMctpInfoTable[tid] = mctpInfoOpt.value();
+                    }
+                }
+                inventoryManager->discoverFDs(MctpInfos(), addedMctpInfoTable);
+            }
+            catch (const std::exception& e)
+            {
+                lg2::error(
+                    "Failed to discover firmware for TIDs with error {ERROR}",
+                    "ERROR", e.what());
+            }
+        }
+#endif
+
         if (manager)
         {
             co_await manager->afterDiscoverTerminus();
@@ -299,6 +325,11 @@ exec::task<int> TerminusManager::discoverMctpTerminusTask()
 
 void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
 {
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    // Collect TIDs before removing termini
+    std::vector<pldm_tid_t> removedTids;
+#endif
+
     // remove terminus
     for (const auto& mctpInfo : mctpInfos)
     {
@@ -307,6 +338,11 @@ void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
         {
             continue;
         }
+
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+        // Store TID before removing
+        removedTids.push_back(it->first);
+#endif
 
         if (manager)
         {
@@ -317,6 +353,32 @@ void TerminusManager::removeMctpTerminus(const MctpInfos& mctpInfos)
         termini.erase(it);
         mctpInfoAvailTable.erase(mctpInfo);
     }
+
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    // Notify inventory manager to remove firmware entries for these TIDs
+    if (inventoryManager && !removedTids.empty())
+    {
+        try
+        {
+            std::map<pldm_tid_t, MctpInfo> removedMctpInfoTable;
+            for (const auto& tid : removedTids)
+            {
+                auto mctpInfoOpt = toMctpInfo(tid);
+                if (mctpInfoOpt.has_value())
+                {
+                    removedMctpInfoTable[tid] = mctpInfoOpt.value();
+                }
+            }
+            inventoryManager->removeFDs(MctpInfos(), removedMctpInfoTable);
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error(
+                "Failed to remove firmware entries for TIDs with error {ERROR}",
+                "ERROR", e.what());
+        }
+    }
+#endif
 }
 
 exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo,
@@ -382,7 +444,6 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo,
     {
         // Assigning a tid. If it has been mapped, mapTid()
         // returns the tid assigned before.
-        lg2::info("Value of tid before setTID: {TID}", "TID", tid);
         auto mappedTid = mapTid(mctpInfo);
         if (!mappedTid)
         {
@@ -392,7 +453,6 @@ exec::task<int> TerminusManager::initMctpTerminus(const MctpInfo& mctpInfo,
         }
 
         tid = mappedTid.value();
-        lg2::info("Value of mapped TID: {TID}", "TID", tid);
         rc = co_await setTidOverMctp(mctpInfo, tid);
         if (rc != PLDM_SUCCESS)
         {
@@ -525,8 +585,8 @@ exec::task<int> TerminusManager::sendRecvPldmMsgOverMctp(
     co_return rc;
 }
 
-exec::task<int> TerminusManager::getTidOverMctp(const MctpInfo& mctpInfo,
-                                                pldm_tid_t tid, pldm_tid_t* responseTID)
+exec::task<int> TerminusManager::getTidOverMctp(
+    const MctpInfo& mctpInfo, pldm_tid_t tid, pldm_tid_t* responseTID)
 {
     mctp_eid_t eid = std::get<0>(mctpInfo);
     uint32_t networkID = std::get<3>(mctpInfo);
@@ -580,15 +640,15 @@ exec::task<int> TerminusManager::getTidOverMctp(const MctpInfo& mctpInfo,
     {
         lg2::info(
             "Terminus with EID {EID}, network ID {NETID} has different TID {RESP_TID} than requested TID {REQ_TID}.",
-            "EID", eid, "NETID", networkID, "RESP_TID", *responseTID,
-            "REQ_TID", tid);
+            "EID", eid, "NETID", networkID, "RESP_TID", *responseTID, "REQ_TID",
+            tid);
     }
 
     co_return completionCode;
 }
 
 exec::task<int> TerminusManager::setTidOverMctp(const MctpInfo& mctpInfo,
-                                                  pldm_tid_t tid)
+                                                pldm_tid_t tid)
 {
     mctp_eid_t eid = std::get<0>(mctpInfo);
     uint32_t networkID = std::get<3>(mctpInfo);

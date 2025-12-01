@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+#include "fw-update/inventory_manager.hpp"
+#endif
+
 #include "config.h"
 
 #include "requester/handler.hpp"
@@ -181,6 +185,14 @@ class TerminusManager
     std::optional<mctp_eid_t> getActiveEidByName(
         const std::string& terminusName);
 
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    // Set the inventory manager to notify when new TID is added
+    void setInventoryManager(fw_update::InventoryManager* invMgr)
+    {
+        inventoryManager = invMgr;
+    }
+#endif
+
   private:
     /** @brief Find the terminus object pointer in termini list.
      *
@@ -293,6 +305,9 @@ class TerminusManager
      *  work
      */
     sdeventplus::Event& event;
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    fw_update::InventoryManager* inventoryManager = nullptr;
+#endif
 };
 } // namespace platform_mc
 } // namespace pldm

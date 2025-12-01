@@ -15,8 +15,41 @@ namespace pldm
 {
 namespace fw_update
 {
-void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
+void InventoryManager::discoverFDs(
+    [[maybe_unused]] const MctpInfos& mctpInfos,
+    std::optional<std::map<pldm_tid_t, MctpInfo>> mctpInfoTable)
 {
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    if (!mctpInfoTable.has_value())
+    {
+        error("MctpInfoTable missing, skipping firmware discovery...");
+        return;
+    }
+    
+    for (const auto& [tid, mctpInfo] : mctpInfoTable.value())
+    {
+        // Skip if already discovered
+        if (discoveredTids.contains(tid))
+        {
+            info("TID {TID} already discovered, skipping", "TID", tid);
+            continue;
+        }
+        
+        auto eid = std::get<pldm::eid>(mctpInfo);
+        try
+        {
+            sendQueryDeviceIdentifiersRequest(static_cast<mctp_eid_t>(tid));
+            discoveredTids.insert(tid); // Mark as discovered
+        }
+        catch (const std::exception& e)
+        {
+            error(
+                "Failed to discover file descriptors for TID {TID}, EID {EID} with {ERROR}",
+                "TID", tid, "EID", eid, "ERROR", e.what());
+        }
+    }
+
+#else
     for (const auto& mctpInfo : mctpInfos)
     {
         auto eid = std::get<pldm::eid>(mctpInfo);
@@ -31,10 +64,37 @@ void InventoryManager::discoverFDs(const MctpInfos& mctpInfos)
                 "EID", eid, "ERROR", e);
         }
     }
+#endif
 }
 
-void InventoryManager::removeFDs(const MctpInfos& mctpInfos)
+void InventoryManager::removeFDs(
+    [[maybe_unused]] const MctpInfos& mctpInfos,
+    std::optional<std::map<pldm_tid_t, MctpInfo>> mctpInfoTable)
 {
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    if (!mctpInfoTable.has_value())
+    {
+        error("mctpInfoTable missing, skipping...");
+        return;
+    }
+    
+    for (const auto& [tid, mctpInfo] : mctpInfoTable.value())
+    {
+        // Remove from discovered set
+        discoveredTids.erase(tid);
+        
+        try
+        {
+            firmwareInventoryManager.deleteFirmwareEntry(tid);
+        }
+        catch (const std::exception& e)
+        {
+            error(
+                "Failed to remove firmware entries for TID {TID} with {ERROR}",
+                "TID", tid, "ERROR", e.what());
+        }
+    }
+#else
     for (const auto& mctpInfo : mctpInfos)
     {
         auto eid = std::get<pldm::eid>(mctpInfo);
@@ -44,6 +104,7 @@ void InventoryManager::removeFDs(const MctpInfos& mctpInfos)
         componentInfoMap.erase(eid);
         firmwareInventoryManager.deleteFirmwareEntry(eid);
     }
+#endif
 }
 
 void InventoryManager::sendQueryDeviceIdentifiersRequest(mctp_eid_t eid)

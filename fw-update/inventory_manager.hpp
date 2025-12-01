@@ -62,8 +62,12 @@ class InventoryManager
      *  the firmware identifiers and component details of the FDs.
      *
      *  @param[in] mctpInfos - List of MCTP endpoint information
+     *  @param[in] mctpInfoTable - Optional map of TID to MctpInfo for AF-MCTP mode
      */
-    void discoverFDs(const MctpInfos& mctpInfos);
+    void discoverFDs(
+        const MctpInfos& mctpInfos,
+        std::optional<std::map<pldm_tid_t, MctpInfo>> mctpInfoTable =
+            std::nullopt);
 
     /** @brief Remove the firmware identifiers and component details of FDs
      *
@@ -71,8 +75,11 @@ class InventoryManager
      *  downstream device identifiers of the FDs managed by the BMC.
      *
      *  @param[in] mctpInfos - List of MCTP endpoint information
+     *  @param[in] mctpInfoTable - Optional map of TID to MctpInfo for AF-MCTP mode
      */
-    void removeFDs(const MctpInfos& mctpInfos);
+    void removeFDs(const MctpInfos& mctpInfos,
+                   std::optional<std::map<pldm_tid_t, MctpInfo>> mctpInfoTable =
+                       std::nullopt);
 
     /** @brief Handler for QueryDeviceIdentifiers command response
      *
@@ -127,6 +134,11 @@ class InventoryManager
                                size_t respMsgLen);
 
   private:
+#ifdef PLDM_TRANSPORT_WITH_AF_MCTP
+    /* Track discovered TIDs to avoid redundant discovery*/
+    std::set<pldm_tid_t> discoveredTids;
+#endif
+
     /**
      * @brief Sends QueryDeviceIdentifiers request
      *
