@@ -430,17 +430,29 @@ NumericSensor::NumericSensor(
     std::string& sensorName, std::string& associationPath) :
     tid(tid), sensorName(sensorName)
 {
+    lg2::info("Creating Compact NumericSensor for sensor '{SENSOR}' on terminus {TID}, disabled: {DISABLED}", 
+              "SENSOR", sensorName, "TID", tid, "DISABLED", sensorDisabled);
+    
     if (!pdr)
     {
+        lg2::error("Invalid PDR pointer for compact numeric sensor '{SENSOR}' on terminus {TID}", 
+                   "SENSOR", sensorName, "TID", tid);
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
 
     sensorId = pdr->sensor_id;
+    lg2::info("Compact sensor '{SENSOR}' has sensor ID {SID}, base_unit: {UNIT}, unit_modifier: {MOD}", 
+              "SENSOR", sensorName, "SID", sensorId, "UNIT", pdr->base_unit, "MOD", pdr->unit_modifier);
+    
     std::string path;
     MetricUnit metricUnit = MetricUnit::Count;
     setSensorUnit(pdr->base_unit);
+    lg2::info("Sensor '{SENSOR}' unit set, namespace: {NS}, useMetricInterface: {METRIC}", 
+              "SENSOR", sensorName, "NS", sensorNameSpace, "METRIC", useMetricInterface);
 
     path = sensorNameSpace + sensorName;
+    lg2::info("Compact sensor '{SENSOR}' D-Bus path: {PATH}", "SENSOR", sensorName, "PATH", path);
+    
     try
     {
         std::string tmp{};
@@ -449,25 +461,35 @@ NumericSensor::NumericSensor(
         {
             interface = METRIC_VALUE_INTF;
         }
+        lg2::info("Checking if sensor '{SENSOR}' already exists with interface {INTF}", 
+                  "SENSOR", sensorName, "INTF", interface);
+        
         tmp = pldm::utils::DBusHandler().getService(path.c_str(),
                                                     interface.c_str());
 
         if (!tmp.empty())
         {
+            lg2::error("Sensor '{SENSOR}' already exists at path {PATH} with service {SVC}", 
+                       "SENSOR", sensorName, "PATH", path, "SVC", tmp);
             throw sdbusplus::xyz::openbmc_project::Common::Error::
                 TooManyResources();
         }
+        lg2::info("Sensor '{SENSOR}' path is available for creation", "SENSOR", sensorName);
     }
-    catch (const std::exception&)
+    catch (const std::exception& e)
     {
+        lg2::info("Sensor path check exception (expected if path doesn't exist): {ERROR}", "ERROR", e);
         /* The sensor object path is not created */
     }
 
     auto& bus = pldm::utils::DBusHandler::getBus();
+    lg2::info("Creating AssociationDefinitions interface for sensor '{SENSOR}'", "SENSOR", sensorName);
+    
     try
     {
         associationDefinitionsIntf =
             std::make_unique<AssociationDefinitionsInft>(bus, path.c_str());
+        lg2::info("AssociationDefinitions interface created for sensor '{SENSOR}'", "SENSOR", sensorName);
     }
     catch (const sdbusplus::exception_t& e)
     {
@@ -476,9 +498,13 @@ NumericSensor::NumericSensor(
             "PATH", path, "ERROR", e);
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
+    
     associationDefinitionsIntf->associations(
         {{"chassis", "all_sensors", associationPath.c_str()}});
+    lg2::info("Association set for sensor '{SENSOR}' with path {APATH}", 
+              "SENSOR", sensorName, "APATH", associationPath);
 
+    lg2::info("Initializing threshold values for sensor '{SENSOR}'", "SENSOR", sensorName);
     double maxValue = std::numeric_limits<double>::quiet_NaN();
     double minValue = std::numeric_limits<double>::quiet_NaN();
     bool hasWarningThresholds = false;
@@ -491,38 +517,54 @@ NumericSensor::NumericSensor(
     double fatalHigh = std::numeric_limits<double>::quiet_NaN();
     double fatalLow = std::numeric_limits<double>::quiet_NaN();
 
+    
     if (pdr->range_field_support.bits.bit0)
     {
         hasWarningThresholds = true;
         warningHigh = pdr->warning_high;
+        lg2::info("Warning high threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", warningHigh, "SENSOR", sensorName);
     }
     if (pdr->range_field_support.bits.bit1)
     {
         hasWarningThresholds = true;
         warningLow = pdr->warning_low;
+        lg2::info("Warning low threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", warningLow, "SENSOR", sensorName);
     }
 
     if (pdr->range_field_support.bits.bit2)
     {
         hasCriticalThresholds = true;
         criticalHigh = pdr->critical_high;
+        lg2::info("Critical high threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", criticalHigh, "SENSOR", sensorName);
     }
 
     if (pdr->range_field_support.bits.bit3)
     {
         hasCriticalThresholds = true;
         criticalLow = pdr->critical_low;
+        lg2::info("Critical low threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", criticalLow, "SENSOR", sensorName);
     }
     if (pdr->range_field_support.bits.bit4)
     {
         hasFatalThresholds = true;
         fatalHigh = pdr->fatal_high;
+        lg2::info("Fatal high threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", fatalHigh, "SENSOR", sensorName);
     }
     if (pdr->range_field_support.bits.bit5)
     {
         hasFatalThresholds = true;
         fatalLow = pdr->fatal_low;
+        lg2::info("Fatal low threshold set to {THRESHOLD} for sensor '{SENSOR}'", 
+                  "THRESHOLD", fatalLow, "SENSOR", sensorName);
     }
+
+    lg2::info("Threshold summary for sensor '{SENSOR}': hasWarning={WARN}, hasCritical={CRIT}, hasFatal={FATAL}",
+              "SENSOR", sensorName, "WARN", hasWarningThresholds, "CRIT", hasCriticalThresholds, "FATAL", hasFatalThresholds);
 
     resolution = std::numeric_limits<double>::quiet_NaN();
     offset = std::numeric_limits<double>::quiet_NaN();
@@ -535,6 +577,8 @@ NumericSensor::NumericSensor(
      * updateTime is in microseconds
      */
     updateTime = static_cast<uint64_t>(DEFAULT_SENSOR_UPDATER_INTERVAL * 1000);
+    lg2::info("Sensor '{SENSOR}' properties: resolution={RES}, offset={OFF}, baseUnitModifier={MOD}, updateTime={TIME}",
+              "SENSOR", sensorName, "RES", resolution, "OFF", offset, "MOD", baseUnitModifier, "TIME", updateTime);
 
     if (!useMetricInterface)
     {
@@ -553,6 +597,7 @@ NumericSensor::NumericSensor(
         valueIntf->maxValue(unitModifier(conversionFormula(maxValue)));
         valueIntf->minValue(unitModifier(conversionFormula(minValue)));
         valueIntf->unit(sensorUnit);
+        lg2::info("Value interface created successfully for sensor '{SENSOR}' with unit {UNIT}", "SENSOR", sensorName, "UNIT", sensorUnit);
     }
     else
     {
@@ -571,15 +616,20 @@ NumericSensor::NumericSensor(
         metricIntf->maxValue(unitModifier(conversionFormula(maxValue)));
         metricIntf->minValue(unitModifier(conversionFormula(minValue)));
         metricIntf->unit(metricUnit);
+        lg2::info("Metric interface created successfully for sensor '{SENSOR}' with unit {UNIT}", "SENSOR", sensorName, "UNIT", metricUnit);
     }
 
     hysteresis = unitModifier(conversionFormula(hysteresis));
+    lg2::info("Hysteresis calculated for sensor '{SENSOR}': {HYST}", "SENSOR", sensorName, "HYST", hysteresis);
 
+    
     if (!createInventoryPath(associationPath, sensorName, pdr->entity_type,
                              pdr->entity_instance, pdr->container_id))
     {
+        lg2::error("Failed to create inventory path for sensor '{SENSOR}'", "SENSOR", sensorName);
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
+    lg2::info("Inventory path created successfully for sensor '{SENSOR}'", "SENSOR", sensorName);
 
     try
     {
@@ -594,6 +644,7 @@ NumericSensor::NumericSensor(
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
     availabilityIntf->available(true);
+    lg2::info("Availability interface created and set to available for sensor '{SENSOR}'", "SENSOR", sensorName);
 
     try
     {
@@ -608,6 +659,7 @@ NumericSensor::NumericSensor(
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
     operationalStatusIntf->functional(!sensorDisabled);
+    lg2::info("Operational status interface created for sensor '{SENSOR}', functional={FUNC}", "SENSOR", sensorName, "FUNC", !sensorDisabled);
 
     if (hasWarningThresholds && !useMetricInterface)
     {
@@ -626,6 +678,7 @@ NumericSensor::NumericSensor(
         }
         thresholdWarningIntf->warningHigh(unitModifier(warningHigh));
         thresholdWarningIntf->warningLow(unitModifier(warningLow));
+        lg2::info("Warning threshold interface created for sensor '{SENSOR}', warningHigh={HIGH}, warningLow={LOW}", "SENSOR", sensorName, "HIGH", unitModifier(warningHigh), "LOW", unitModifier(warningLow));
     }
 
     if (hasCriticalThresholds && !useMetricInterface)
@@ -645,6 +698,7 @@ NumericSensor::NumericSensor(
         }
         thresholdCriticalIntf->criticalHigh(unitModifier(criticalHigh));
         thresholdCriticalIntf->criticalLow(unitModifier(criticalLow));
+        lg2::info("Critical threshold interface created for sensor '{SENSOR}', criticalHigh={HIGH}, criticalLow={LOW}", "SENSOR", sensorName, "HIGH", unitModifier(criticalHigh), "LOW", unitModifier(criticalLow));
     }
 
     if (hasFatalThresholds && !useMetricInterface)
@@ -664,7 +718,13 @@ NumericSensor::NumericSensor(
         }
         thresholdHardShutdownIntf->hardShutdownHigh(unitModifier(fatalHigh));
         thresholdHardShutdownIntf->hardShutdownLow(unitModifier(fatalLow));
+        lg2::info("Fatal threshold interface created for sensor '{SENSOR}', high={HIGH}, low={LOW}",
+                  "SENSOR", sensorName, "HIGH", unitModifier(fatalHigh), "LOW", unitModifier(fatalLow));
     }
+    lg2::info("Successfully completed constructor for Compact numeric sensor '{SENSOR}', ID {SID}, TID {TID}",
+              "SENSOR", sensorName, "SID", sensorId, "TID", tid);
+    lg2::info("Constructor has exited for Compact numeric sensor {SENSOR}",
+              "SENSOR", sensorName);
 }
 
 double NumericSensor::conversionFormula(double value)
@@ -692,6 +752,9 @@ double NumericSensor::unitModifier(double value)
 
 void NumericSensor::updateReading(bool available, bool functional, double value)
 {
+    lg2::info("Starting sensor update reading for '{SENSOR}', available={AVAIL}, functional={FUNC}, rawValue={VAL}",
+              "SENSOR", sensorName, "AVAIL", available, "FUNC", functional, "VAL", value);
+    
     if (!availabilityIntf || !operationalStatusIntf ||
         (!useMetricInterface && !valueIntf) ||
         (useMetricInterface && !metricIntf))
@@ -701,50 +764,81 @@ void NumericSensor::updateReading(bool available, bool functional, double value)
             "NAME", sensorName);
         return;
     }
+    lg2::info("All required D-Bus interfaces exist for sensor '{SENSOR}'", "SENSOR", sensorName);
+
     availabilityIntf->available(available);
+    lg2::info("Set availability to {AVAIL} for sensor '{SENSOR}'", "AVAIL", available, "SENSOR", sensorName);
+    
     operationalStatusIntf->functional(functional);
+    lg2::info("Set functional status to {FUNC} for sensor '{SENSOR}'", "FUNC", functional, "SENSOR", sensorName);
+    
     double curValue = 0;
     if (!useMetricInterface)
     {
         curValue = valueIntf->value();
+        lg2::info("Current value interface value for sensor '{SENSOR}': {CURVAL}", "SENSOR", sensorName, "CURVAL", curValue);
     }
     else
     {
         curValue = metricIntf->value();
+        lg2::info("Current metric interface value for sensor '{SENSOR}': {CURVAL}", "SENSOR", sensorName, "CURVAL", curValue);
     }
 
     double newValue = std::numeric_limits<double>::quiet_NaN();
     if (functional && available)
     {
+        lg2::info("Sensor '{SENSOR}' is functional and available, calculating new value", "SENSOR", sensorName);
         newValue = unitModifier(conversionFormula(value));
+        lg2::info("Calculated new value for sensor '{SENSOR}': {NEWVAL} (from raw {RAW})", 
+                  "SENSOR", sensorName, "NEWVAL", newValue, "RAW", value);
+        
         if (std::isfinite(newValue) || std::isfinite(curValue))
         {
+            lg2::info("New or current value is finite for sensor '{SENSOR}', updating interface", "SENSOR", sensorName);
             if (!useMetricInterface)
             {
                 valueIntf->value(newValue);
+                lg2::info("Updated value interface to {NEWVAL} for sensor '{SENSOR}'", "NEWVAL", newValue, "SENSOR", sensorName);
                 updateThresholds();
+                lg2::info("Thresholds updated for sensor '{SENSOR}'", "SENSOR", sensorName);
             }
             else
             {
                 metricIntf->value(newValue);
+                lg2::info("Updated metric interface to {NEWVAL} for sensor '{SENSOR}'", "NEWVAL", newValue, "SENSOR", sensorName);
             }
+        }
+        else
+        {
+            lg2::info("Both new and current values are NaN for sensor '{SENSOR}', skipping update", "SENSOR", sensorName);
         }
     }
     else
     {
+        lg2::info("Sensor '{SENSOR}' is NOT functional or available (functional={FUNC}, available={AVAIL})", 
+                  "SENSOR", sensorName, "FUNC", functional, "AVAIL", available);
+        
         if (newValue != curValue &&
             (std::isfinite(newValue) || std::isfinite(curValue)))
         {
+            lg2::info("Setting sensor '{SENSOR}' value to NaN due to unavailability/non-functional state", "SENSOR", sensorName);
             if (!useMetricInterface)
             {
                 valueIntf->value(std::numeric_limits<double>::quiet_NaN());
+                lg2::info("Value interface set to NaN for sensor '{SENSOR}'", "SENSOR", sensorName);
             }
             else
             {
                 metricIntf->value(std::numeric_limits<double>::quiet_NaN());
+                lg2::info("Metric interface set to NaN for sensor '{SENSOR}'", "SENSOR", sensorName);
             }
         }
+        else
+        {
+            lg2::info("Value unchanged for unavailable sensor '{SENSOR}', both values are NaN or equal", "SENSOR", sensorName);
+        }
     }
+    lg2::info("Ending update reading for sensor '{SENSOR}'", "SENSOR", sensorName);
 }
 
 void NumericSensor::handleErrGetSensorReading()

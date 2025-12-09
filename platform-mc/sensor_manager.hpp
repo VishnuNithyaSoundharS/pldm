@@ -84,7 +84,7 @@ class SensorManager
      *
      *  @return coroutine
      */
-    exec::task<void> handleSetNumericSensorEnable(pldm_tid_t tid,
+    exec::task<int> handleSetNumericSensorEnable(pldm_tid_t tid,
                                                   SensorID sensorId);
 
   protected:

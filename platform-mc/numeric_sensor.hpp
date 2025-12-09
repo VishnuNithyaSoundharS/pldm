@@ -385,6 +385,9 @@ class NumericSensor
     /** @brief Sensor Unit */
     SensorUnit sensorUnit;
 
+    /** @brief Sensor Disabled State */
+    bool disabled = false;
+
   private:
     /**
      * @brief resolve and clear a log entry

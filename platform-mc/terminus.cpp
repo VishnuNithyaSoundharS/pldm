@@ -225,6 +225,7 @@ void Terminus::parseTerminusPDRs()
 
 void Terminus::addNextSensorFromPDRs()
 {
+    lg2::info("addNextSensorFromPDRs called for terminus {TID}, current sensorPdrIt: {IT}", "TID", tid, "IT", sensorPdrIt);
     sensorCreationEvent.reset();
 
     if (terminusName.empty())
@@ -235,33 +236,42 @@ void Terminus::addNextSensorFromPDRs()
         return;
     }
 
+    lg2::info("Terminus {TID}: numericSensorPdrs count: {NUM}, compactNumericSensorPdrs count: {COMP}", "TID", tid, "NUM", numericSensorPdrs.size(), "COMP", compactNumericSensorPdrs.size());
     auto pdrIt = sensorPdrIt;
+    lg2::info("Terminus {TID}: Processing PDR at index {IT}", "TID", tid, "IT", pdrIt);
 
     if (pdrIt < numericSensorPdrs.size())
     {
+        lg2::info("Terminus {TID}: Creating deferred event for Numeric Sensor at PDR index {IT}", "TID", tid, "IT", pdrIt);
         const auto& pdr = numericSensorPdrs[pdrIt];
         // Defer adding the next Numeric Sensor
         sensorCreationEvent = std::make_unique<sdeventplus::source::Defer>(
             event,
             std::bind(std::mem_fn(&Terminus::addNumericSensor), this, pdr));
+        lg2::info("Terminus {TID}: Deferred event created for Numeric Sensor", "TID", tid);
     }
     else if (pdrIt < numericSensorPdrs.size() + compactNumericSensorPdrs.size())
     {
+        lg2::info("Terminus {TID}: Processing Compact Numeric Sensor, adjusting PDR index from {OLD} to {NEW}", "TID", tid, "OLD", pdrIt, "NEW", (pdrIt - numericSensorPdrs.size()));
         pdrIt -= numericSensorPdrs.size();
+        lg2::info("Terminus {TID}: Creating deferred event for Compact Numeric Sensor at adjusted PDR index {IT}", "TID", tid, "IT", pdrIt);
         const auto& pdr = compactNumericSensorPdrs[pdrIt];
         // Defer adding the next Compact Numeric Sensor
         sensorCreationEvent = std::make_unique<sdeventplus::source::Defer>(
             event, std::bind(std::mem_fn(&Terminus::addCompactNumericSensor),
                              this, pdr));
+        lg2::info("Terminus {TID}: Deferred event created for Compact Numeric Sensor", "TID", tid);
     }
     else
     {
+        lg2::info("Terminus {TID}: All sensor PDRs processed, resetting sensorPdrIt to 0", "TID", tid);
         sensorPdrIt = 0;
         return;
     }
 
     // Move the iteration to the next sensor PDR
     sensorPdrIt++;
+    lg2::info("Terminus {TID}: Incremented sensorPdrIt to {IT}", "TID", tid, "IT", sensorPdrIt);
 }
 
 std::shared_ptr<SensorAuxiliaryNames> Terminus::getSensorAuxiliaryNames(
@@ -449,6 +459,7 @@ void Terminus::addNumericSensor(
             tid, true, pdr, sensorName, inventoryPath);
         lg2::info("Created NumericSensor {NAME}", "NAME", sensorName);
         numericSensors.emplace_back(sensor);
+        
     }
     catch (const sdbusplus::exception_t& e)
     {
@@ -528,6 +539,7 @@ std::shared_ptr<pldm_compact_numeric_sensor_pdr>
 void Terminus::addCompactNumericSensor(
     const std::shared_ptr<pldm_compact_numeric_sensor_pdr> pdr)
 {
+    lg2::info("addCompactNumericSensor called for terminus ID {TID}", "TID", tid);
     if (!pdr)
     {
         lg2::error(
@@ -537,6 +549,9 @@ void Terminus::addCompactNumericSensor(
     }
 
     auto sensorId = pdr->sensor_id;
+    lg2::info("Processing Compact Numeric Sensor with ID {SID} for terminus {TID}", "SID", sensorId, "TID", tid);
+    lg2::info("Processing Compact Numeric Sensor with ID {SID} for terminus {TID}", "SID", sensorId, "TID", tid);
+    lg2::info("Getting sensor names for sensor ID {SID}, terminus {TID}", "SID", sensorId, "TID", tid);
     auto sensorNames = getSensorNames(sensorId);
 
     if (sensorNames.empty())
@@ -547,22 +562,29 @@ void Terminus::addCompactNumericSensor(
         addNextSensorFromPDRs();
     }
 
-    std::string sensorName = sensorNames.front();
+    lg2::info("Retrieved {COUNT} sensor names for sensor ID {SID}, terminus {TID}", "COUNT", sensorNames.size(), "SID", sensorId, "TID", tid);
 
+    std::string sensorName = sensorNames.front();
+    lg2::info("Using sensor name '{NAME}' for sensor ID {SID}, terminus {TID}", "NAME", sensorName, "SID", sensorId, "TID", tid);
+
+    lg2::info("Creating Compact NumericSensor object for sensor '{NAME}', ID {SID}, terminus {TID}, inventoryPath: {PATH}", "NAME", sensorName, "SID", sensorId, "TID", tid, "PATH", inventoryPath);
     try
     {
+        lg2::info("Right before initializing sensor in compact numeric sensor");
         auto sensor = std::make_shared<NumericSensor>(
             tid, true, pdr, sensorName, inventoryPath);
-        lg2::info("Created Compact NumericSensor {NAME}", "NAME", sensorName);
+        lg2::info("Successfully created Compact NumericSensor '{NAME}' (ID {SID}) for terminus {TID}", "NAME", sensorName, "SID", sensorId, "TID", tid);
         numericSensors.emplace_back(sensor);
+        lg2::info("Added Compact NumericSensor to numericSensors list, total sensors: {COUNT} for terminus {TID}", "COUNT", numericSensors.size(), "TID", tid);
     }
     catch (const sdbusplus::exception_t& e)
     {
         lg2::error(
-            "Failed to create Compact NumericSensor. error - {ERROR} sensorname - {NAME}",
-            "ERROR", e, "NAME", sensorName);
+            "Failed to create Compact NumericSensor for sensor ID {SID}, terminus {TID}. error - {ERROR} sensorname - {NAME}",
+            "SID", sensorId, "TID", tid, "ERROR", e, "NAME", sensorName);
     }
 
+    lg2::info("Calling addNextSensorFromPDRs for terminus {TID}", "TID", tid);
     addNextSensorFromPDRs();
 }
 

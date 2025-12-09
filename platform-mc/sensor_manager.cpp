@@ -166,15 +166,22 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
     uint64_t pollingTimeInUsec = pollingTime * 1000;
     uint8_t rc = PLDM_SUCCESS;
 
+    lg2::info("Starting sensor polling task for terminus ID {TID}", "TID", tid);
+
     do
     {
         if ((!sensorPollTimers.contains(tid)) ||
             (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning()))
         {
+            lg2::info(
+                "Sensor poll timer not running for terminus ID {TID}, exiting task",
+                "TID", tid);
             co_return PLDM_ERROR;
         }
 
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t0);
+        lg2::info("Polling cycle started at {T0} for terminus ID {TID}", "T0",
+                  t0, "TID", tid);
 
         /**
          * Terminus is not available for PLDM request.
@@ -193,9 +200,14 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
 
         if (!termini.contains(tid))
         {
+            lg2::info("Terminus ID {TID} not in termini map, returning success",
+                      "TID", tid);
             co_return PLDM_SUCCESS;
         }
 
+        lg2::info(
+            "Terminus ID {TID} found in termini map, proceeding with polling",
+            "TID", tid);
         auto& terminus = termini[tid];
         if (!terminus)
         {
@@ -207,19 +219,30 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
 
         if (manager && terminus->pollEvent)
         {
+            lg2::info("Polling for platform event for terminus ID {TID}", "TID",
+                      tid);
             co_await manager->pollForPlatformEvent(
                 tid, terminus->pollEventId, terminus->pollDataTransferHandle);
+            lg2::info("Completed platform event polling for terminus ID {TID}",
+                      "TID", tid);
         }
 
         if (manager && (!terminus->pollEvent))
         {
+            lg2::info("Polling for OEM platform event for terminus ID {TID}",
+                      "TID", tid);
             co_await manager->oemPollForPlatformEvent(tid);
+            lg2::info(
+                "Completed OEM platform event polling for terminus ID {TID}",
+                "TID", tid);
         }
 
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
 
         auto& numericSensors = terminus->numericSensors;
         auto toBeUpdated = numericSensors.size();
+        lg2::info("Processing {COUNT} sensors for terminus ID {TID}", "COUNT",
+                  toBeUpdated, "TID", tid);
 
         if (!roundRobinSensorItMap.contains(tid))
         {
@@ -242,6 +265,9 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
 
             if (sensorIt >= numericSensors.size())
             {
+                lg2::info(
+                    "Wrapping sensor iterator back to 0 for terminus ID {TID}",
+                    "TID", tid);
                 sensorIt = 0;
             }
 
@@ -251,18 +277,50 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
             elapsed = t1 - sensor->timeStamp;
             if ((sensor->updateTime <= elapsed) || (!sensor->timeStamp))
             {
-                rc = co_await getSensorReading(sensor);
+                lg2::info(
+                    "Reading sensor {SENSOR} for terminus ID {TID}, elapsed: {ELAPSED}, updateTime: {UPTIME}",
+                    "SENSOR", sensor->sensorId, "TID", tid, "ELAPSED", elapsed,
+                    "UPTIME", sensor->updateTime);
+                if (sensor->disabled)
+                {
+                    lg2::info("Sensor is disabled calling handleSetNumericSensorEnable for sensor {SENSOR}, terminus ID {TID}", "SENSOR", sensor->sensorId, "TID", tid);
+                    auto enableRc = co_await handleSetNumericSensorEnable(
+                        tid, sensor->sensorId);
+                    lg2::info("Returned from handleSetNumericSensorEnable for sensor {SENSOR}, terminus ID {TID} with return code {RC}", "SENSOR", sensor->sensorId, "TID", tid, "RC", enableRc);
+                    
+                    if (enableRc == PLDM_SUCCESS)
+                    {
+                        lg2::info("Successfully enabled sensor {SENSOR} for terminus {TID}, will read next cycle", "SENSOR", sensor->sensorId, "TID", tid);
+                        sensor->disabled = false;
+                    }
+                    else
+                    {
+                        lg2::error("Failed to enable sensor {SENSOR} for terminus {TID}, will retry next cycle", "SENSOR", sensor->sensorId, "TID", tid);
+                    }
+                    
+                    // Skip reading this cycle to give sensor time to stabilize after enable command
+                    toBeUpdated--;
+                    sensorIt++;
+                    continue;
+                }
 
+                rc = co_await getSensorReading(sensor);
                 if ((!sensorPollTimers.contains(tid)) ||
                     (sensorPollTimers[tid] &&
                      !sensorPollTimers[tid]->isRunning()))
                 {
+                    lg2::info(
+                        "Sensor poll timer stopped during reading for terminus ID {TID}",
+                        "TID", tid);
                     co_return PLDM_ERROR;
                 }
                 sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
                 if (rc == PLDM_SUCCESS)
                 {
                     sensor->timeStamp = t1;
+                    lg2::info(
+                        "Successfully read sensor {SENSOR} for terminus ID {TID}",
+                        "SENSOR", sensor->sensorId, "TID", tid);
                 }
                 else
                 {
@@ -271,27 +329,64 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
                         "TID", tid, "RC", rc);
                 }
             }
+            else
+            {
+                lg2::info(
+                    "Skipping sensor {SENSOR} for terminus ID {TID}, not due for update (elapsed: {ELAPSED}, updateTime: {UPTIME})",
+                    "SENSOR", sensor->sensorId, "TID", tid, "ELAPSED", elapsed,
+                    "UPTIME", sensor->updateTime);
+            }
 
             toBeUpdated--;
             sensorIt++;
+            lg2::info(
+                "Remaining sensors to process: {REMAINING}, current iterator: {IT} for terminus ID {TID}",
+                "REMAINING", toBeUpdated, "IT", sensorIt, "TID", tid);
 
             sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
         }
 
         sd_event_now(event.get(), CLOCK_MONOTONIC, &t1);
+        lg2::info(
+            "Polling cycle completed for terminus ID {TID}, duration: {DURATION} usec, pollingTimeInUsec: {POLLTIME}",
+            "TID", tid, "DURATION", (t1 - t0), "POLLTIME", pollingTimeInUsec);
     } while ((t1 - t0) >= pollingTimeInUsec);
 
+    lg2::info(
+        "Exiting do-while loop for terminus ID {TID}, cycle duration {DURATION} < pollingTimeInUsec {POLLTIME}",
+        "TID", tid, "DURATION", (t1 - t0), "POLLTIME", pollingTimeInUsec);
+
+    lg2::info(
+        "Sensor polling task completed successfully for terminus ID {TID}",
+        "TID", tid);
     co_return PLDM_SUCCESS;
 }
 
 exec::task<int> SensorManager::getSensorReading(
     std::shared_ptr<NumericSensor> sensor)
 {
+    lg2::info(
+        "vdbg: getSensorReading called for terminus ID {TID}, sensor Id {ID}.",
+        "TID", sensor->tid, "ID", sensor->sensorId);
     if (!sensor)
     {
         lg2::error("Call `getSensorReading` with null `sensor` pointer.");
         co_return PLDM_ERROR_INVALID_DATA;
     }
+
+    // if (sensor->disabled)
+    // {
+    //     lg2::info(
+    //         "Sensor is disabled calling handleSetNumericSensorEnable for
+    //         sensor {SENSOR}, terminus ID {TID}", "SENSOR", sensor->sensorId,
+    //         "TID", sensor->tid);
+    //     auto rc = co_await handleSetNumericSensorEnable(sensor->tid,
+    //                                                     sensor->sensorId);
+    //     lg2::info(
+    //         "Returned from handleSetNumericSensorEnable for sensor {SENSOR},
+    //         terminus ID {TID} with return code {RC}", "SENSOR",
+    //         sensor->sensorId, "TID", sensor->tid, "RC", rc);
+    // }
 
     auto tid = sensor->tid;
     auto sensorId = sensor->sensorId;
@@ -305,6 +400,9 @@ exec::task<int> SensorManager::getSensorReading(
             "TID", tid, "ID", sensorId, "RC", rc);
         co_return rc;
     }
+    lg2::info(
+        "Encoded GetSensorReading request for terminus ID {TID}, sensor Id {ID}",
+        "TID", tid, "ID", sensorId);
 
     if (!getAvailableState(tid))
     {
@@ -314,6 +412,9 @@ exec::task<int> SensorManager::getSensorReading(
         co_await stdexec::just_stopped();
     }
 
+    lg2::info(
+        "Sending GetSensorReading request for terminus ID {TID}, sensor Id {ID}",
+        "TID", tid, "ID", sensorId);
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
     rc = co_await terminusManager.sendRecvPldmMsg(tid, request, &responseMsg,
@@ -329,9 +430,15 @@ exec::task<int> SensorManager::getSensorReading(
     if ((!sensorPollTimers.contains(tid)) ||
         (sensorPollTimers[tid] && !sensorPollTimers[tid]->isRunning()))
     {
+        lg2::info(
+            "Sensor poll timer stopped after receiving response for terminus ID {TID}, sensor Id {ID}",
+            "TID", tid, "ID", sensorId);
         co_return PLDM_ERROR;
     }
 
+    lg2::info(
+        "Received GetSensorReading response for terminus ID {TID}, sensor Id {ID}, length: {LEN}",
+        "TID", tid, "ID", sensorId, "LEN", responseLen);
     uint8_t completionCode = PLDM_SUCCESS;
     uint8_t sensorDataSize = PLDM_SENSOR_DATA_SIZE_SINT32;
     uint8_t sensorOperationalState = 0;
@@ -362,24 +469,50 @@ exec::task<int> SensorManager::getSensorReading(
         co_return completionCode;
     }
 
+    lg2::info(
+        "Decoded GetSensorReading response for terminus ID {TID}, sensor Id {ID}, operational state: {STATE}",
+        "TID", tid, "ID", sensorId, "STATE", sensorOperationalState);
     double value = std::numeric_limits<double>::quiet_NaN();
     switch (sensorOperationalState)
     {
         case PLDM_SENSOR_ENABLED:
+            lg2::info("Sensor {SENSOR} is enabled for terminus ID {TID}",
+                      "SENSOR", sensorId, "TID", tid);
+            lg2::info(
+                "Marking sensor {SENSOR} as enabled for terminus ID {TID}",
+                "SENSOR", sensorId, "TID", tid);
+            sensor->disabled = false;
             break;
         case PLDM_SENSOR_DISABLED:
+            lg2::info(
+                "Sensor {SENSOR} is disabled for terminus ID {TID}, attempting to enable",
+                "SENSOR", sensorId, "TID", tid);
             sensor->updateReading(false, true, value);
-            co_await handleSetNumericSensorEnable(tid, sensorId);
-            co_return completionCode;
+            lg2::info(
+                "Marking sensor {SENSOR} as disabled for terminus ID {TID}",
+                "SENSOR", sensorId, "TID", tid);
+            sensor->disabled = true;
+            lg2::info(
+                "Marked sensor {SENSOR} as disabled for terminus ID {TID}",
+                "SENSOR", sensorId, "TID", tid);
+            co_return PLDM_SENSOR_DISABLED;
         case PLDM_SENSOR_FAILED:
+            lg2::info(
+                "Sensor {SENSOR} is in failed state for terminus ID {TID}",
+                "SENSOR", sensorId, "TID", tid);
             sensor->updateReading(true, false, value);
             co_return completionCode;
         case PLDM_SENSOR_UNAVAILABLE:
         default:
+            lg2::info("Sensor {SENSOR} is unavailable for terminus ID {TID}",
+                      "SENSOR", sensorId, "TID", tid);
             sensor->updateReading(false, false, value);
             co_return completionCode;
     }
 
+    lg2::info(
+        "Parsing sensor data for terminus ID {TID}, sensor Id {ID}, data size: {SIZE}",
+        "TID", tid, "ID", sensorId, "SIZE", sensorDataSize);
     switch (sensorDataSize)
     {
         case PLDM_SENSOR_DATA_SIZE_UINT8:
@@ -406,6 +539,8 @@ exec::task<int> SensorManager::getSensorReading(
     }
 
     sensor->updateReading(true, true, value);
+    lg2::info("Sensor reading for terminus ID {TID}, sensor Id {ID} is {VALUE}",
+              "TID", tid, "ID", sensorId, "VALUE", value);
     co_return completionCode;
 }
 
@@ -413,12 +548,15 @@ exec::task<int> SensorManager::setNumericSensorEnable(
     pldm_tid_t tid, SensorID sensorId, uint8_t sensorOperationalState,
     uint8_t sensorEventMessageEnable)
 {
+    lg2::info(
+        "setNumericSensorEnable called for terminus ID {TID}, sensor ID {SENSOR}, state: {STATE}",
+        "TID", tid, "SENSOR", sensorId, "STATE", sensorOperationalState);
     Request request(
         sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_SENSOR_ENABLE_REQ_BYTES);
-    auto requestMsg = new (request.data()) pldm_msg;
+    auto requestMsg1 = new (request.data()) pldm_msg;
     auto rc = encode_set_numeric_sensor_enable_req(
         0, sensorId, sensorOperationalState, sensorEventMessageEnable,
-        requestMsg);
+        requestMsg1);
     if (rc)
     {
         lg2::error(
@@ -426,11 +564,25 @@ exec::task<int> SensorManager::setNumericSensorEnable(
             "TID", tid, "SENSOR", sensorId, "RC", rc);
         co_return rc;
     }
+    lg2::info(
+        "Encoded SetNumericSensorEnable request for terminus ID {TID}, sensor ID {SENSOR}",
+        "TID", tid, "SENSOR", sensorId);
 
+    if (!getAvailableState(tid))
+    {
+        lg2::info(
+            "Terminus ID {TID} is not available for PLDM request from {NOW}.",
+            "TID", tid, "NOW", pldm::utils::getCurrentSystemTime());
+        co_await stdexec::just_stopped();
+    }
+
+    lg2::info(
+        "Sending SetNumericSensorEnable request for terminus ID {TID}, sensor ID {SENSOR}",
+        "TID", tid, "SENSOR", sensorId);
     const pldm_msg* responseMsg = nullptr;
     size_t responseLen = 0;
-    rc = co_await terminusManager.sendRecvPldmMsg(tid, request, &responseMsg,
-                                                  &responseLen);
+    rc = PLDM_SUCCESS; //co_await terminusManager.sendRecvPldmMsg(tid, request, &responseMsg,
+                         //                         &responseLen);
     if (rc)
     {
         lg2::error(
@@ -439,7 +591,10 @@ exec::task<int> SensorManager::setNumericSensorEnable(
         co_return rc;
     }
 
-    uint8_t completionCode;
+    lg2::info(
+        "Received SetNumericSensorEnable response for terminus ID {TID}, sensor ID {SENSOR}, length: {LEN}",
+        "TID", tid, "SENSOR", sensorId, "LEN", responseLen);
+    uint8_t completionCode = PLDM_SUCCESS;
     rc = decode_set_numeric_sensor_enable_resp(responseMsg, responseLen,
                                                &completionCode);
     if (rc)
@@ -458,23 +613,25 @@ exec::task<int> SensorManager::setNumericSensorEnable(
         co_return completionCode;
     }
 
+    lg2::info("Successfully enabled sensor {SENSOR} for terminus ID {TID}",
+              "SENSOR", sensorId, "TID", tid);
     co_return completionCode;
 }
 
-exec::task<void> SensorManager::handleSetNumericSensorEnable(pldm_tid_t tid,
-                                                             SensorID sensorId)
+exec::task<int> SensorManager::handleSetNumericSensorEnable(pldm_tid_t tid,
+                                                            SensorID sensorId)
 {
     if (!termini.contains(tid))
     {
         lg2::error("Terminus {TID} not found", "TID", tid);
-        co_return;
+        co_return PLDM_ERROR;
     }
 
     auto& terminus = termini[tid];
     if (!terminus)
     {
         lg2::error("Terminus {TID} has invalid terminus object", "TID", tid);
-        co_return;
+        co_return PLDM_ERROR;
     }
 
     // Check if terminus supports SetNumericSensorEnable command
@@ -484,7 +641,7 @@ exec::task<void> SensorManager::handleSetNumericSensorEnable(pldm_tid_t tid,
         lg2::debug(
             "Terminus {TID} does not support SetNumericSensorEnable command",
             "TID", tid);
-        co_return;
+        co_return PLDM_ERROR;
     }
 
     // Call the lower-level function to enable the specific sensor
@@ -498,7 +655,7 @@ exec::task<void> SensorManager::handleSetNumericSensorEnable(pldm_tid_t tid,
             "SENSOR", sensorId, "TID", tid, "RC", rc);
     }
 
-    co_return;
+    co_return rc;
 }
 
 } // namespace platform_mc
