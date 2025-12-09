@@ -499,8 +499,16 @@ NumericSensor::NumericSensor(
         throw sdbusplus::xyz::openbmc_project::Common::Error::InvalidArgument();
     }
     
+    try{
     associationDefinitionsIntf->associations(
         {{"chassis", "all_sensors", associationPath.c_str()}});
+    }
+    catch(const std::exception& e)
+    {
+        lg2::error("Failed to set associations for sensor '{SENSOR}' with path {APATH}. Error: {ERROR}", 
+                   "SENSOR", sensorName, "APATH", associationPath, "ERROR", e);
+        throw;
+    }
     lg2::info("Association set for sensor '{SENSOR}' with path {APATH}", 
               "SENSOR", sensorName, "APATH", associationPath);
 
