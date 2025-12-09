@@ -281,7 +281,7 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
                     "Reading sensor {SENSOR} for terminus ID {TID}, elapsed: {ELAPSED}, updateTime: {UPTIME}",
                     "SENSOR", sensor->sensorId, "TID", tid, "ELAPSED", elapsed,
                     "UPTIME", sensor->updateTime);
-                if (sensor->disabled)
+                if (true || sensor->disabled)
                 {
                     lg2::info("Sensor is disabled calling handleSetNumericSensorEnable for sensor {SENSOR}, terminus ID {TID}", "SENSOR", sensor->sensorId, "TID", tid);
                     auto enableRc = co_await handleSetNumericSensorEnable(
