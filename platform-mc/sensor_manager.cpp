@@ -281,7 +281,7 @@ exec::task<int> SensorManager::doSensorPollingTask(pldm_tid_t tid)
                     "Reading sensor {SENSOR} for terminus ID {TID}, elapsed: {ELAPSED}, updateTime: {UPTIME}",
                     "SENSOR", sensor->sensorId, "TID", tid, "ELAPSED", elapsed,
                     "UPTIME", sensor->updateTime);
-                if (true || sensor->disabled)
+                if (sensor->disabled)
                 {
                     lg2::info("Sensor is disabled calling handleSetNumericSensorEnable for sensor {SENSOR}, terminus ID {TID}", "SENSOR", sensor->sensorId, "TID", tid);
                     auto enableRc = co_await handleSetNumericSensorEnable(
@@ -553,10 +553,15 @@ exec::task<int> SensorManager::setNumericSensorEnable(
         "TID", tid, "SENSOR", sensorId, "STATE", sensorOperationalState);
     Request request(
         sizeof(pldm_msg_hdr) + PLDM_SET_NUMERIC_SENSOR_ENABLE_REQ_BYTES);
-    auto requestMsg1 = new (request.data()) pldm_msg;
+    auto requestMsg = new (request.data()) pldm_msg;
     auto rc = encode_set_numeric_sensor_enable_req(
         0, sensorId, sensorOperationalState, sensorEventMessageEnable,
-        requestMsg1);
+        requestMsg);
+    // auto rc = static_cast<int>(PLDM_SUCCESS);
+    // (void)sensorEventMessageEnable; // IGNORE
+    // (void)sensorOperationalState; // IGNORE
+    // requestMsg->data[0]
+    // (void)requestMsg; // IGNORE
     if (rc)
     {
         lg2::error(
